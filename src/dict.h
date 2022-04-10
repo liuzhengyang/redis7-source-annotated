@@ -33,6 +33,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+/**
+ * dict.h和dict.c定义了dict字典(HashMap)的结构和提供的接口。
+ * dict采取数组链表存储方式，在数据达到一定阈值时进行扩容rehash。
+ */
+
 #ifndef __DICT_H
 #define __DICT_H
 
@@ -41,18 +46,28 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+// dict操作成功
 #define DICT_OK 0
+// dict操作异常
 #define DICT_ERR 1
 
+/**
+ * dictEntry是dict字典中的链表元素
+ */
 typedef struct dictEntry {
+    // 字典key value的key
     void *key;
     union {
+        // 如果value是复杂类型，指向对应的对象，对于缓存数据，数据结构是redisObject
         void *val;
+        // 如果value是uint64 int64 d这三种数据，使用下面的对应字段
         uint64_t u64;
         int64_t s64;
         double d;
     } v;
+    // 形成链表的next引用
     struct dictEntry *next;     /* Next entry in the same hash bucket. */
+    // TODO
     void *metadata[];           /* An arbitrary number of bytes (starting at a
                                  * pointer-aligned address) of size as returned
                                  * by dictType's dictEntryMetadataBytes(). */
@@ -60,6 +75,9 @@ typedef struct dictEntry {
 
 typedef struct dict dict;
 
+/**
+ * dictType
+ */
 typedef struct dictType {
     uint64_t (*hashFunction)(const void *key);
     void *(*keyDup)(dict *d, const void *key);
@@ -73,22 +91,41 @@ typedef struct dictType {
     size_t (*dictEntryMetadataBytes)(dict *d);
 } dictType;
 
+/**
+ * 计算dict数组长度的方法，初始没有元素时exp为-1，其他情况下为2的exp次方
+ */
 #define DICTHT_SIZE(exp) ((exp) == -1 ? 0 : (unsigned long)1<<(exp))
+/**
+ * 计算size mask，和key的hash进行与操作可以得到对应的数组index
+ */
 #define DICTHT_SIZE_MASK(exp) ((exp) == -1 ? 0 : (DICTHT_SIZE(exp))-1)
 
+/**
+ * dict字典定义
+ */
 struct dict {
+    // 类型
     dictType *type;
 
+    // 两个hashtable，默认用0，rehash的时候会从0向1逐步转移数据
     dictEntry **ht_table[2];
+    // 存储hashtable中写入了多少元素
     unsigned long ht_used[2];
 
+    // rehashidx-1的时候说明没有在rehash
     long rehashidx; /* rehashing not in progress if rehashidx == -1 */
 
+    // pauserehash用作暂停rehash的标识，在dictScan的时候会暂停rehash防止漏掉元素或者重复遍历元素
+    // TODO 把int16_t的小的字段防止结构体最后来尽量优化结构体的padding，类似Java对象的8字节对齐
     /* Keep small vars at end for optimal (minimal) struct padding */
     int16_t pauserehash; /* If >0 rehashing is paused (<0 indicates coding error) */
+    // hashtable数组长度的2的指数值
     signed char ht_size_exp[2]; /* exponent of size. (size = 1<<exp) */
 };
 
+/**
+ * 遍历dict的迭代器
+ */
 /* If safe is set to 1 this is a safe iterator, that means, you can call
  * dictAdd, dictFind, and other functions against the dictionary even while
  * iterating. Otherwise it is a non safe iterator, and only dictNext()
@@ -105,8 +142,10 @@ typedef struct dictIterator {
 typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
 typedef void (dictScanBucketFunction)(dict *d, dictEntry **bucketref);
 
+// 初始指数大小为2
 /* This is the initial size of every hash table */
 #define DICT_HT_INITIAL_EXP      2
+// 默认初始大小为4
 #define DICT_HT_INITIAL_SIZE     (1<<(DICT_HT_INITIAL_EXP))
 
 /* ------------------------------- Macros ------------------------------------*/
